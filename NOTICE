@@ -1,0 +1,16 @@
+LXMF — MeshForge fork
+=====================
+
+This product includes software developed by Mark Qvist as LXMF
+(https://github.com/markqvist/LXMF), used under the terms of the Reticulum
+License (see LICENSE). The upstream copyright and permission notice are
+preserved in LICENSE.
+
+Modifications by the MeshForge project (Nursedude):
+
+  - Forked at upstream tag 0.9.4 (commit 2ad82b68bde5d76dfee2b333e06079fd43bbc13f).
+  - Version metadata carries a PEP 440 local marker (`+mf.N`).
+  - See FORK.md for rationale and the wire/format-compatibility invariant.
+
+No changes have been made to the LXMF message format or delivery semantics;
+this fork remains interoperable with stock LXMF nodes.
