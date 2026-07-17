@@ -16,6 +16,7 @@ import RNS.vendor.umsgpack as msgpack
 from .LXMF import APP_NAME
 from .LXMF import FIELD_TICKET
 from .LXMF import PN_META_NAME
+from .LXMF import SF_COMPRESSION
 from .LXMF import pn_announce_data_is_valid
 
 from .LXMPeer import LXMPeer
@@ -96,7 +97,6 @@ class LXMRouter:
 
         self.pending_inbound       = []
         self.pending_outbound      = []
-        self.failed_outbound       = []
         self.direct_links          = {}
         self.backchannel_links     = {}
         self.delivery_destinations = {}
@@ -995,7 +995,8 @@ class LXMRouter:
                 if delivery_destination.stamp_cost > 0 and delivery_destination.stamp_cost < 255:
                     stamp_cost = delivery_destination.stamp_cost
 
-            peer_data = [display_name, stamp_cost]
+            supported_functionality = [SF_COMPRESSION]
+            peer_data = [display_name, stamp_cost, supported_functionality]
 
             return msgpack.packb(peer_data)
 
@@ -1643,6 +1644,10 @@ class LXMRouter:
     def handle_outbound(self, lxmessage):
         destination_hash = lxmessage.get_destination().hash
 
+        if lxmessage.desired_method == LXMessage.PROPAGATED and not self.outbound_propagation_node:
+            self.fail_message(lxmessage)
+            raise IOError("Attempt to send propagated message with no outbound propagation node configured")
+
         if lxmessage.stamp_cost == None:
             if destination_hash in self.outbound_stamp_costs:
                 stamp_cost = self.outbound_stamp_costs[destination_hash][1]
@@ -1730,11 +1735,13 @@ class LXMRouter:
     def lxmf_delivery(self, lxmf_data, destination_type = None, phy_stats = None, ratchet_id = None, method = None, no_stamp_enforcement=False, allow_duplicate=False):
         try:
             message = LXMessage.unpack_from_bytes(lxmf_data)
-            if ratchet_id and not message.ratchet_id:
-                message.ratchet_id = ratchet_id
 
-            if method:
-                message.method = method
+            if message.source_blackholed:
+                RNS.log(f"Dropping LXM from blackholed identity {message.source.identity}", RNS.LOG_DEBUG)
+                return False
+
+            if ratchet_id and not message.ratchet_id: message.ratchet_id = ratchet_id
+            if method: message.method = method
 
             if message.signature_validated and FIELD_TICKET in message.fields:
                 ticket_entry = message.fields[FIELD_TICKET]
@@ -1837,7 +1844,8 @@ class LXMRouter:
 
             phy_stats = {"rssi": packet.rssi, "snr": packet.snr, "q": packet.q}
 
-            self.lxmf_delivery(lxmf_data, packet.destination_type, phy_stats=phy_stats, ratchet_id=packet.ratchet_id, method=method)
+            def job(): self.lxmf_delivery(lxmf_data, packet.destination_type, phy_stats=phy_stats, ratchet_id=packet.ratchet_id, method=method)
+            threading.Thread(target=job, daemon=True).start()
 
         except Exception as e:
             RNS.log("Exception occurred while parsing incoming LXMF data.", RNS.LOG_ERROR)
@@ -2390,14 +2398,8 @@ class LXMRouter:
         RNS.log(str(lxmessage)+" failed to send", RNS.LOG_DEBUG)
 
         lxmessage.progress = 0.0
-        if lxmessage in self.pending_outbound:
-            self.pending_outbound.remove(lxmessage)
-
-        self.failed_outbound.append(lxmessage)
-
-        if lxmessage.state != LXMessage.REJECTED:
-            lxmessage.state = LXMessage.FAILED
-
+        if lxmessage in self.pending_outbound: self.pending_outbound.remove(lxmessage)
+        if lxmessage.state != LXMessage.REJECTED: lxmessage.state = LXMessage.FAILED
         if lxmessage.failed_callback != None and callable(lxmessage.failed_callback):
             lxmessage.failed_callback(lxmessage)
 
@@ -2517,6 +2519,8 @@ class LXMRouter:
                 if lxmessage.state == LXMessage.DELIVERED:
                     RNS.log("Delivery has occurred for "+str(lxmessage)+", removing from outbound queue", RNS.LOG_DEBUG)
                     self.pending_outbound.remove(lxmessage)
+                    try: RNS.Reticulum.get_instance()._retain_destination_data(lxmessage.destination_hash)
+                    except Exception as e: RNS.log(f"An error occurred while marking {RNS.prettyhexrep(lxmessage.destination_hash)} for announce data retainment: {e}", RNS.LOG_ERROR)
 
                     # Udate ticket delivery stats
                     if lxmessage.include_ticket and FIELD_TICKET in lxmessage.fields:
