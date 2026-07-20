@@ -43,8 +43,33 @@ string still reads newer.
 8s-RPC-timeout split the coordinated roll exists to prevent.
 
 So: **exact pin**. It states the invariant this fleet already lives by — rnsd
-and every client roll TOGETHER — in the one place pip will actually enforce it.
+and every client roll TOGETHER — in the one place pip reads at install time.
 **Bump this pin in the same commit as any RNS fork bump.**
+
+#### What the pin does and does NOT do (measured 2026-07-19, disposable venv)
+
+| scenario | before (`>=1.3.5`) | after (`==1.3.8+mf.0`) |
+|---|---|---|
+| `pip install <lxmf-fork>` alone | silently pulls stock rns | **exit 1, fails loud**: "No matching distribution found for rns==1.3.8+mf.0" — nothing installed |
+| both forks in one resolution (the roll path) | ok | ok — `lxmf 1.0.1+mf.1` + `rns 1.3.8+mf.0` |
+| explicit `pip install --upgrade rns` | clobbers, undetectable | **still clobbers** (pip warns, exit 0) — but now `pip check` REPORTS it |
+
+**Be precise about the residual: an exact pin does not stop a determined
+`--upgrade`.** pip prints a dependency-conflict warning and proceeds. What
+changes is detectability — with `>=1.3.5`, stock 1.3.9 SATISFIED the
+requirement, so `pip check` was clean and the clobber was invisible. With the
+exact pin, `pip check` reports:
+
+```
+lxmf 1.0.1+mf.1 has requirement rns==1.3.8+mf.0, but you have rns 1.3.9.
+```
+
+So the pin converts a silent, undetectable failure into a loud-at-resolution
+one plus a machine-checkable witness afterwards. That is the honest claim —
+prevention of the accidental path, detection of the deliberate one. Wiring
+`pip check` into the env-coherence probe would close the remaining gap
+(``probe_rns_env_coherence`` compares versions ACROSS envs today; it does not
+compare an env against its own declared requirements).
 
 ### `0.9.4+mf.0` → `1.0.1+mf.0` (2026-07-17)
 
