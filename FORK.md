@@ -18,6 +18,34 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.0` → `1.0.1+mf.1` (2026-07-19) — pin RNS exactly
+
+Upstream declares `install_requires=["rns>=1.3.5"]`. For a FORK that range is a
+live footgun, and it fired: during the 1.3.8 canary soak, stock `rns 1.3.9`
+landed in the canary box's SERVICE venv beside `1.3.8+mf.0`.
+
+The cause is PEP 440 ordering — a local version sorts ABOVE the same release,
+so stock `1.3.9` sits BETWEEN our `1.3.8+mf.0` and a future `1.3.9+mf.0`. Any
+resolution allowed to upgrade takes stock and silently drops the `+mf` patches
+(#72 `_rpc_recv` poll, mf.4 logging-lock, mf.5 exit-75) while the version
+string still reads newer.
+
+`<1.3.9` is NOT the fix — verified against `packaging`:
+
+| spec | stock 1.3.9 | fork 1.3.8+mf.0 | fork 1.3.9+mf.0 | old 1.2.5+mf.5 |
+|---|---|---|---|---|
+| `>=1.3.5` (upstream) | allowed ❌ | allowed | allowed | blocked |
+| `<1.3.9` | blocked | allowed | **blocked ❌** | **allowed ❌** |
+| `==1.3.8+mf.0` | blocked | allowed | blocked | blocked |
+
+`<1.3.9` would exclude our own next fork AND still admit the pre-roll
+`1.2.5+mf.5` — letting msgpack-era LXMF run against pickle-era RNS, the exact
+8s-RPC-timeout split the coordinated roll exists to prevent.
+
+So: **exact pin**. It states the invariant this fleet already lives by — rnsd
+and every client roll TOGETHER — in the one place pip will actually enforce it.
+**Bump this pin in the same commit as any RNS fork bump.**
+
 ### `0.9.4+mf.0` → `1.0.1+mf.0` (2026-07-17)
 
 Adopted upstream `1.0.1` in lockstep with the RNS `1.3.8` merge. The fork has
