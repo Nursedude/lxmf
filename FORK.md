@@ -18,6 +18,14 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.1` → `1.0.1+mf.2` (2026-09-26) — follow rns `1.3.8+mf.1`
+
+Pin-only release, no LXMF code change. rns `1.3.8+mf.1` fixes an AutoInterface
+boot crash (rnsd exit 255 on a tentative IPv6 link-local). Because the pin
+above is exact, every rns `+mf.N` release needs a matching LXMF release, or
+`pip check` breaks and a clean install from `requirements/rns.txt` cannot
+resolve. That coupling is the price of the exact pin, and it is paid on purpose.
+
 ### `1.0.1+mf.0` → `1.0.1+mf.1` (2026-07-19) — pin RNS exactly
 
 Upstream declares `install_requires=["rns>=1.3.5"]`. For a FORK that range is a
