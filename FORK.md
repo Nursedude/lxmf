@@ -18,6 +18,12 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.2` → `1.0.1+mf.3` (2026-10-01) — follow rns `1.3.8+mf.2`
+
+Pin-only release, no LXMF code change. rns `1.3.8+mf.2` fixes
+`interface_mode = gateway`/`internal` raising KeyError at startup (rnsd failed
+to start). Same exact-pin coupling as below.
+
 ### `1.0.1+mf.1` → `1.0.1+mf.2` (2026-09-26) — follow rns `1.3.8+mf.1`
 
 Pin-only release, no LXMF code change. rns `1.3.8+mf.1` fixes an AutoInterface
