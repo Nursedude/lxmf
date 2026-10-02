@@ -44,6 +44,6 @@ setuptools.setup(
     # An exact pin is the honest expression of the invariant: rnsd and every
     # client are rolled TOGETHER, so lxmf must name the exact RNS substrate it
     # was built against. Bump this in the same commit as any RNS fork bump.
-    install_requires=["rns==1.3.8+mf.3"],
+    install_requires=["rns==1.3.8+mf.4"],
     python_requires=">=3.7",
 )

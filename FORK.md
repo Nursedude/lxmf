@@ -18,6 +18,11 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.4` → `1.0.1+mf.5` (2026-10-01) — follow rns `1.3.8+mf.4`
+
+Pin-only release, no LXMF code change. rns `1.3.8+mf.4`: join-only
+(`require_shared_instance`) never binds `@rns` and is retryable in-process.
+
 ### `1.0.1+mf.3` → `1.0.1+mf.4` (2026-10-01) — follow rns `1.3.8+mf.3`
 
 Pin-only release, no LXMF code change. rns `1.3.8+mf.3`: a refused
