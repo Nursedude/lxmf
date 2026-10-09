@@ -81,3 +81,28 @@ def test_backchannel_arrival_without_a_waiting_message_does_not_kick():
     r.delivery_remote_identified(MagicMock(), identity)
     time.sleep(0.1)
     assert not r.process_outbound.called
+
+
+def test_backchannel_kick_survives_a_held_outbound_lock():
+    """mf.7: a kick that arrives while another peer's reply holds the outbound
+    lock must still run process_outbound once the lock is released — a bare
+    thread into a `return if locked` guard was silently lost under contention
+    (fleet 13:10 fire 2026-10-09: five observers at a tight 2.7-3.8 s = one
+    PROCESSING_INTERVAL tick, exactly where several PINGs hit one echo)."""
+    r = _bare_router()
+    identity = RNS.Identity()
+    dest_hash = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", identity)
+    waiting = MagicMock()
+    waiting.get_destination.return_value.hash = dest_hash
+    r.pending_outbound = [waiting]
+    r.outbound_processing_lock.acquire()          # another reply is in flight
+    try:
+        r.delivery_remote_identified(MagicMock(), identity)
+        time.sleep(0.3)
+        assert not r.process_outbound.called, "ran while the lock was held"
+    finally:
+        r.outbound_processing_lock.release()
+    deadline = time.time() + 2
+    while not r.process_outbound.called and time.time() < deadline:
+        time.sleep(0.02)
+    assert r.process_outbound.called, "kick was lost under lock contention"

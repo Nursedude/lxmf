@@ -1898,7 +1898,13 @@ class LXMRouter:
         # mf.6: a message already waiting for this peer goes now, not on the
         # next PROCESSING_INTERVAL tick (measured 0-4 s of pure wait per reply).
         if any(lxm.get_destination().hash == destination_hash for lxm in self.pending_outbound):
-            threading.Thread(target=self.process_outbound, daemon=True).start()
+            # mf.7: wait for the lock like handle_outbound does — process_outbound
+            # returns at once when another reply holds it, which lost the kick
+            # under contention (several peers answered in one tick).
+            def _kick():
+                while self.outbound_processing_lock.locked(): time.sleep(0.05)
+                self.process_outbound()
+            threading.Thread(target=_kick, daemon=True).start()
 
 
     ### Peer Sync & Propagation ###########################

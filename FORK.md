@@ -18,6 +18,17 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.6` → `1.0.1+mf.7` (2026-10-09) — the backchannel kick waits for the outbound lock
+
+mf.6's kick started `process_outbound` in a bare thread; `process_outbound`
+returns immediately when `outbound_processing_lock` is held by another peer's
+reply, so under contention (several peers answering in the same tick) the kick
+was lost and the message waited for the next `PROCESSING_INTERVAL` tick. Seen
+on the fleet's first post-roll fire (13:10 HST): lone pairs 30–80 ms, but five
+observers reading one echo at a tight 2.7–3.8 s. Fix: the kick spins on the
+lock the way `handle_outbound` does, then runs. Test added to
+`tests/meshforge_reconnecting_peer_link_cache.py` (fails on mf.6).
+
 ### `1.0.1+mf.5` → `1.0.1+mf.6` (2026-10-09) — a reply to a RECONNECTED peer goes now, not on a timer
 
 Root-caused on the MeshForge fleet (the "why does moc4 answer in 9 s" question).
