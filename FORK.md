@@ -18,6 +18,46 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.5` → `1.0.1+mf.6` (2026-10-09) — a reply to a RECONNECTED peer goes now, not on a timer
+
+Root-caused on the MeshForge fleet (the "why does moc4 answer in 9 s" question).
+A long-lived LXMRouter (the lab echo) answering a peer that comes back with the
+SAME identity but a NEW process (the one-shot tracer, every 600 s) paid 2–10 s
+per reply while the LAN link was idle. Measured on the manager: echo cache
+empty → 25 ms; 20 s later, cache holding the link to the previous (exited)
+tracer process → 5,960 ms, 6,902 ms. 7 d × 4 boxes: the sub-200 ms mode was
+1–4 % of fires. Echo-side RNS log at EXTREME showed the mechanism exactly:
+`The link to <peer> was closed unexpectedly, retrying path request...` (the
+CLOSED-cached-link branch, which schedules `DELIVERY_RETRY_WAIT` = 10 s), then
+`Starting transfer` only on the next `PROCESSING_INTERVAL` (4 s) tick, once the
+new peer's inbound link had identified and become a backchannel.
+
+Three gaps in `LXMRouter`, all still in upstream master on 2026-10-09:
+
+1. `delivery_link_closed()` was `pass`, and neither incoming delivery links nor
+   outbound `RNS.Link(...)` delivery links registered a closed callback — so a
+   closed/dead link stayed in `direct_links` / `backchannel_links` and was
+   tried FIRST for the next message to that peer.
+2. (same root) the CLOSED branch then imposes `DELIVERY_RETRY_WAIT` even though
+   a path is known.
+3. `delivery_remote_identified()` registered the backchannel but never kicked
+   `process_outbound`, so a message already pending for that peer waited for
+   the job loop (0–4 s of pure wait, every reply).
+
+Fix (12 lines, no wire change): register `delivery_link_closed` on both link
+kinds; `delivery_link_closed` forgets the link in both tables; a backchannel
+arrival starts `process_outbound` when a message is pending for that peer.
+Test: `tests/meshforge_reconnecting_peer_link_cache.py` (3 of 4 fail on the
+unpatched tree). Live canary on the manager, both ends on this tree via
+PYTHONPATH: **18 ms / 17 ms / 17 ms** for the warm-cache loopback that was
+6.5 s. Pairs with MeshForge `lab/lxmf_tracer.py` tearing its links down on
+exit (the party that dies closes the door) — on an mf.5 echo that teardown
+alone moves the warm path from the dead-ACTIVE wait (~3 s) to the CLOSED
+branch (~6.5 s), so roll this BEFORE or WITH that tracer change.
+
+**Offer back:** yes — pure bookkeeping, no protocol change; upstream master
+carries the identical `pass` and the same unkicked backchannel. Not yet filed.
+
 ### `1.0.1+mf.4` → `1.0.1+mf.5` (2026-10-01) — follow rns `1.3.8+mf.4`
 
 Pin-only release, no LXMF code change. rns `1.3.8+mf.4`: join-only
