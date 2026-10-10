@@ -66,8 +66,14 @@ exit (the party that dies closes the door) — on an mf.5 echo that teardown
 alone moves the warm path from the dead-ACTIVE wait (~3 s) to the CLOSED
 branch (~6.5 s), so roll this BEFORE or WITH that tracer change.
 
-**Offer back:** yes — pure bookkeeping, no protocol change; upstream master
-carries the identical `pass` and the same unkicked backchannel. Not yet filed.
+**Offer back (2026-10-09):** attempted. `gh pr create` against
+`markqvist/LXMF` is refused — "Interactions on this repository have been
+restricted to collaborators only" (the December 2025 Carrier Switch; see the
+Reticulum fork's FORK.md). The offer therefore lives where anyone, the author
+included, can take it without GitHub interactions: this fork's `master` is
+upstream `master` + exactly one commit (`f28d1c8`, mf.6 + the mf.7 lock-wait
+kick, 17+/1−), and the PR text is `docs/offer-back-reconnected-peer-link-cache.md`.
+No other channel was posted to; that is the operator's call.
 
 ### `1.0.1+mf.4` → `1.0.1+mf.5` (2026-10-01) — follow rns `1.3.8+mf.4`
 
