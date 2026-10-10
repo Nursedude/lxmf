@@ -1,0 +1,78 @@
+From f28d1c843aaf3e8c56e0798ca3d3c512462cc599 Mon Sep 17 00:00:00 2001
+From: Nursedude <177804819+Nursedude@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 14:16:08 -1000
+Subject: [PATCH] Reply to a reconnected peer promptly: forget closed delivery
+ links, kick outbound when a backchannel appears
+
+A long-lived LXMRouter answering a peer that returns with the same
+identity in a new process (its previous process exited) tried the dead
+cached link first: delivery_link_closed was a no-op and neither incoming
+nor outbound delivery links registered a closed callback, so the stale
+entry stayed in direct_links / backchannel_links, the CLOSED branch
+scheduled DELIVERY_RETRY_WAIT, and the message finally left on the next
+PROCESSING_INTERVAL tick after the new inbound link identified, because
+delivery_remote_identified never kicked process_outbound.
+
+Measured on a Raspberry Pi 4 (LAN, shared instance): router cache empty
+-> 25 ms round trip; 20 s later, cache holding the previous process's
+link -> 5,960 ms and 6,902 ms. With this change on both ends: 18 / 17 /
+17 ms. Across a nine-node fleet the sub-200 ms mode was 1-4% of samples
+before and is the norm after.
+
+Changes: register delivery_link_closed on both link kinds;
+delivery_link_closed forgets the link in both tables; a backchannel
+arrival starts process_outbound when a message is pending for that peer,
+waiting for the outbound lock the way handle_outbound does. No timer,
+crypto or wire-format change.
+---
+ LXMF/LXMRouter.py | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/LXMF/LXMRouter.py b/LXMF/LXMRouter.py
+index a03917b..30ce979 100644
+--- a/LXMF/LXMRouter.py
++++ b/LXMF/LXMRouter.py
+@@ -2030,9 +2030,15 @@ class LXMRouter:
+         link.set_resource_started_callback(self.delivery_resource_transfer_began)
+         link.set_resource_concluded_callback(self.delivery_resource_concluded)
+         link.set_remote_identified_callback(self.delivery_remote_identified)
++        link.set_link_closed_callback(self.delivery_link_closed)
+ 
+     def delivery_link_closed(self, link):
+-        pass
++        # Forget a closed link everywhere, so the next message to that peer
++        # does not try it first and fall into the CLOSED branch's
++        # DELIVERY_RETRY_WAIT.
++        for table in (self.direct_links, self.backchannel_links):
++            for destination_hash in [h for h, l in table.items() if l is link]:
++                table.pop(destination_hash, None)
+ 
+     def delivery_resource_transfer_began(self, resource):
+         size = resource.get_data_size()
+@@ -2065,6 +2071,15 @@ class LXMRouter:
+         destination_hash = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", identity)
+         self.backchannel_links[destination_hash] = link
+         RNS.log(f"Backchannel became available for {RNS.prettyhexrep(destination_hash)} on delivery link {link}", RNS.LOG_DEBUG)
++        # A message already waiting for this peer goes now, not on the next
++        # PROCESSING_INTERVAL tick. Wait for the outbound lock the way
++        # handle_outbound does: process_outbound returns at once when another
++        # peer's reply holds it, which would lose the kick under contention.
++        if any(lxm.get_destination().hash == destination_hash for lxm in self.pending_outbound):
++            def _kick():
++                while self.outbound_processing_lock.locked(): time.sleep(0.05)
++                self.process_outbound()
++            threading.Thread(target=_kick, daemon=True).start()
+ 
+ 
+     ### Peer Sync & Propagation ###########################
+@@ -2917,6 +2932,7 @@ class LXMRouter:
+                                             RNS.log("Establishing link to "+RNS.prettyhexrep(lxmessage.get_destination().hash)+" for delivery attempt "+str(lxmessage.delivery_attempts)+" to "+RNS.prettyhexrep(lxmessage.get_destination().hash), RNS.LOG_DEBUG)
+                                             delivery_link = RNS.Link(lxmessage.get_destination())
+                                             delivery_link.set_link_established_callback(self.process_outbound)
++                                            delivery_link.set_link_closed_callback(self.delivery_link_closed)
+                                             self.direct_links[delivery_destination_hash] = delivery_link
+                                             lxmessage.progress = 0.03
+                                         else:
+-- 
+2.47.3
+
