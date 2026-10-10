@@ -2030,9 +2030,15 @@ class LXMRouter:
         link.set_resource_started_callback(self.delivery_resource_transfer_began)
         link.set_resource_concluded_callback(self.delivery_resource_concluded)
         link.set_remote_identified_callback(self.delivery_remote_identified)
+        link.set_link_closed_callback(self.delivery_link_closed)
 
     def delivery_link_closed(self, link):
-        pass
+        # Forget a closed link everywhere, so the next message to that peer
+        # does not try it first and fall into the CLOSED branch's
+        # DELIVERY_RETRY_WAIT.
+        for table in (self.direct_links, self.backchannel_links):
+            for destination_hash in [h for h, l in table.items() if l is link]:
+                table.pop(destination_hash, None)
 
     def delivery_resource_transfer_began(self, resource):
         size = resource.get_data_size()
@@ -2065,6 +2071,15 @@ class LXMRouter:
         destination_hash = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", identity)
         self.backchannel_links[destination_hash] = link
         RNS.log(f"Backchannel became available for {RNS.prettyhexrep(destination_hash)} on delivery link {link}", RNS.LOG_DEBUG)
+        # A message already waiting for this peer goes now, not on the next
+        # PROCESSING_INTERVAL tick. Wait for the outbound lock the way
+        # handle_outbound does: process_outbound returns at once when another
+        # peer's reply holds it, which would lose the kick under contention.
+        if any(lxm.get_destination().hash == destination_hash for lxm in self.pending_outbound):
+            def _kick():
+                while self.outbound_processing_lock.locked(): time.sleep(0.05)
+                self.process_outbound()
+            threading.Thread(target=_kick, daemon=True).start()
 
 
     ### Peer Sync & Propagation ###########################
@@ -2917,6 +2932,7 @@ class LXMRouter:
                                             RNS.log("Establishing link to "+RNS.prettyhexrep(lxmessage.get_destination().hash)+" for delivery attempt "+str(lxmessage.delivery_attempts)+" to "+RNS.prettyhexrep(lxmessage.get_destination().hash), RNS.LOG_DEBUG)
                                             delivery_link = RNS.Link(lxmessage.get_destination())
                                             delivery_link.set_link_established_callback(self.process_outbound)
+                                            delivery_link.set_link_closed_callback(self.delivery_link_closed)
                                             self.direct_links[delivery_destination_hash] = delivery_link
                                             lxmessage.progress = 0.03
                                         else:
