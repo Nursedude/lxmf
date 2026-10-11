@@ -18,6 +18,16 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.8` → `1.0.1+mf.9` (2026-10-10) — follow rns `1.3.8+mf.6`
+
+Pin-only release, no LXMF code change. rns `1.3.8+mf.6`: a PipeInterface
+child that stops draining costs that interface, not rnsd (writer thread +
+bounded queue, honest `online`; two fresh non-author passes). Cut together
+with the rns tag this time, so the pair resolves from the tags on day one
+(mf.8 was cut only after a fresh `pip install` of MeshForge's pin file went
+ResolutionImpossible). Not rolled: no fleet box runs a PipeInterface; the
+MeshForge/MeshAnchor pins stay at rns mf.5 / lxmf mf.8 until the next roll.
+
 ### `1.0.1+mf.7` → `1.0.1+mf.8` (2026-10-10) — follow rns `1.3.8+mf.5`
 
 Pin-only release, no LXMF code change. rns `1.3.8+mf.5`: an external
