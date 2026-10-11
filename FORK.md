@@ -18,6 +18,19 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.7` → `1.0.1+mf.8` (2026-10-10) — follow rns `1.3.8+mf.5`
+
+Pin-only release, no LXMF code change. rns `1.3.8+mf.5`: an external
+interface module that calls `RNS.panic()` / `sys.exit()` while loading costs
+that interface, not rnsd (five fresh non-author passes). Found the hard way:
+rns was rolled fleet-wide with `--no-deps` first, every box then read
+`lxmf 1.0.1+mf.6 has requirement rns==1.3.8+mf.4` under a real `pip check`,
+and MeshForge CI's fresh `pip install -r requirements/rns.txt` was
+`ResolutionImpossible` — the exact pin doing its job. Note: this is the first
+release AFTER mf.7, so a fleet roll of mf.8 also carries mf.7's backchannel
+kick (planned 2026-10-09: "roll mf.7 with the next LXMF release, not alone";
+mf.7 was tagged, canaried once on one box, never rolled).
+
 ### `1.0.1+mf.6` → `1.0.1+mf.7` (2026-10-09) — the backchannel kick waits for the outbound lock
 
 mf.6's kick started `process_outbound` in a bare thread; `process_outbound`
