@@ -240,6 +240,11 @@ copyright and permission notice are preserved; MeshForge modifications are
 recorded in `NOTICE`. See the Reticulum fork's `FORK.md` for the license
 discussion.
 
+The same AI-training standing rules apply here as in the Reticulum fork's
+`FORK.md` (2026-10-13): no LXMF source in any dataset, eval fixture or
+fine-tune, and model training turned off on every account whose AI sessions
+touch this fork.
+
 ## Tracking upstream
 
 Mirror the Reticulum fork's process: add upstream as a remote, merge the new
