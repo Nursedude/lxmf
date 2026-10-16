@@ -1871,7 +1871,9 @@ class LXMRouter:
         # peer does not try it first and fall into the CLOSED branch's
         # DELIVERY_RETRY_WAIT. Upstream leaves this as `pass`.
         for table in (self.direct_links, self.backchannel_links):
-            for destination_hash in [h for h, l in table.items() if l is link]:
+            # mf.12: snapshot first — another thread registering a link mid-scan
+            # raised "dictionary changed size during iteration" (mf.11's class).
+            for destination_hash in [h for h, l in list(table.items()) if l is link]:
                 table.pop(destination_hash, None)
 
     def resource_transfer_began(self, resource):
@@ -2551,8 +2553,10 @@ class LXMRouter:
 
                     # Prepare link for backchannel communications
                     delivery_destination_hash = lxmessage.get_destination().hash
-                    if lxmessage.method == LXMessage.DIRECT and delivery_destination_hash in self.direct_links:
-                        direct_link = self.direct_links[delivery_destination_hash]
+                    # mf.12: one .get(), not `in` then `[h]` — mf.6's closed callback can
+                    # pop the entry from another thread in between (KeyError).
+                    direct_link = self.direct_links.get(delivery_destination_hash) if lxmessage.method == LXMessage.DIRECT else None
+                    if direct_link != None:
                         if not hasattr(direct_link, "backchannel_identified") or direct_link.backchannel_identified == False:
                             if direct_link.initiator == True:
                                 source_destination_hash = lxmessage.get_source().hash
@@ -2621,19 +2625,21 @@ class LXMRouter:
                             delivery_destination_hash = lxmessage.get_destination().hash
                             direct_link = None
                             
-                            if delivery_destination_hash in self.direct_links:
+                            # mf.12: .get(), not `in` then `[h]` (closed-callback race).
+                            direct_link = self.direct_links.get(delivery_destination_hash)
+                            if direct_link != None:
                                 # An established direct link already exists to
                                 # the destination, so we'll try to use it for
                                 # delivering the message
-                                direct_link = self.direct_links[delivery_destination_hash]
                                 RNS.log(f"Using available direct link {direct_link} to {RNS.prettyhexrep(delivery_destination_hash)}", RNS.LOG_DEBUG)
 
-                            elif delivery_destination_hash in self.backchannel_links:
-                                # An established backchannel link exists to
-                                # the destination, so we'll try to use it for
-                                # delivering the message
-                                direct_link = self.backchannel_links[delivery_destination_hash]
-                                RNS.log(f"Using available backchannel link {direct_link} to {RNS.prettyhexrep(delivery_destination_hash)}", RNS.LOG_DEBUG)
+                            else:
+                                direct_link = self.backchannel_links.get(delivery_destination_hash)
+                                if direct_link != None:
+                                    # An established backchannel link exists to
+                                    # the destination, so we'll try to use it for
+                                    # delivering the message
+                                    RNS.log(f"Using available backchannel link {direct_link} to {RNS.prettyhexrep(delivery_destination_hash)}", RNS.LOG_DEBUG)
 
                             if direct_link != None:
                                 if direct_link.status == RNS.Link.ACTIVE:
@@ -2663,10 +2669,9 @@ class LXMRouter:
                                         lxmessage.next_delivery_attempt = time.time() + LXMRouter.PATH_REQUEST_WAIT
 
                                     lxmessage.set_delivery_destination(None)
-                                    if delivery_destination_hash in self.direct_links:
-                                        self.direct_links.pop(delivery_destination_hash)
-                                    if delivery_destination_hash in self.backchannel_links:
-                                        self.backchannel_links.pop(delivery_destination_hash)
+                                    # mf.12: pop(h, None) — the closed callback may have won.
+                                    self.direct_links.pop(delivery_destination_hash, None)
+                                    self.backchannel_links.pop(delivery_destination_hash, None)
                                     lxmessage.next_delivery_attempt = time.time() + LXMRouter.DELIVERY_RETRY_WAIT
                                 else:
                                     # Simply wait for the link to become active or close
