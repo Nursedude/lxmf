@@ -911,20 +911,25 @@ class LXMRouter:
             RNS.log(f"Distribution queue mapping completed in {RNS.prettytime(time.time()-st)}", RNS.LOG_DEBUG)
 
     def clean_links(self):
+        # mf.11: walk a SNAPSHOT. teardown() may fire delivery_link_closed
+        # (mf.6), which forgets the link in direct_links mid-iteration, and
+        # other threads register links concurrently: the live iteration raised
+        # "dictionary changed size during iteration" ~150x/day on a busy
+        # gateway, and each one skipped the rest of this cleanup. Removals
+        # tolerate an entry the callback already forgot.
         closed_links = []
-        for link_hash in self.direct_links:
-            link = self.direct_links[link_hash]
+        for link_hash, link in list(self.direct_links.items()):
             inactive_time = link.no_data_for()
 
             if inactive_time > LXMRouter.LINK_MAX_INACTIVITY:
                 link.teardown()
                 closed_links.append(link_hash)
-                if link.link_id in self.validated_peer_links:
-                    self.validated_peer_links.pop(link.link_id)
+                self.validated_peer_links.pop(link.link_id, None)
 
         for link_hash in closed_links:
-            cleaned_link = self.direct_links.pop(link_hash)
-            RNS.log("Cleaned link "+str(cleaned_link), RNS.LOG_DEBUG)
+            cleaned_link = self.direct_links.pop(link_hash, None)
+            if cleaned_link is not None:
+                RNS.log("Cleaned link "+str(cleaned_link), RNS.LOG_DEBUG)
 
         try:
             inactive_links = []

@@ -18,6 +18,42 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### UNRELEASED (2026-10-16) — clean_links() walks a snapshot (our mf.6 made its teardown mutate the dict)
+
+Found on the MeshForge fleet while tracing an unrelated incident:
+`LXMRouter.clean_links: RuntimeError: dictionary changed size during
+iteration` from the job loop — moc's gateway 126–154x/day on every full day of
+journal (the journal starts 10-10 20:00, so the start date is UNKNOWN there),
+moc3 74x/7 d, meshanchor-server in bursts (0 on 10-10..12, 28 on 10-13). The
+job loop logs and retries 4 s later, so it never paged and nothing tracked it;
+each one also skipped the rest of `clean_links` for that tick (propagation
+link cleanup, outbound propagation link reset).
+
+Cause (ours): **mf.6** (`22e0a7c`) gave `delivery_link_closed` a body that
+forgets a closed link in `direct_links`. `clean_links` iterates `direct_links`
+and calls `link.teardown()` inside the loop; a teardown that fires the closed
+callback pops from the dict being iterated, and the later
+`direct_links.pop(link_hash)` would KeyError on the entry the callback already
+removed. Upstream's `delivery_link_closed` is `pass`, so upstream carries only
+the milder form (a link registered by another thread mid-walk).
+
+Fix (11+/6−, no wire change): iterate `list(self.direct_links.items())`;
+`pop(..., None)` for both tables. Test:
+`tests/meshforge_clean_links_mutation.py` — 4 of 4 fail on the unpatched tree
+with the fleet's exact error (deterministic teardown→callback, the skipped
+propagation cleanup, a concurrent add, and a real two-thread race); all 9 fork
+tests pass with the fix.
+
+**Not tagged, not rolled.** HEAD pins `rns==1.3.8+mf.7` (mf.9/mf.10 are
+pin-only follows of the unrolled PipeInterface arc) while the fleet runs
+lxmf `mf.8` / rns `mf.5`, so a release from HEAD would roll two unrelated
+changes at once — the release shape is the operator's call.
+
+**Offer back:** the milder upstream form (concurrent registration) applies to
+`markqvist/LXMF` master as-is; interactions there are restricted to
+collaborators (see the mf.6 entry), so the offer would live in this fork's
+docs, as with mf.6. Not posted.
+
 ### `1.0.1+mf.9` → `1.0.1+mf.10` (2026-10-12) — follow rns `1.3.8+mf.7`
 
 Pin-only release, no LXMF code change. rns `1.3.8+mf.7`: a PipeInterface
