@@ -18,7 +18,7 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
-### UNRELEASED (2026-10-16) — clean_links() walks a snapshot (our mf.6 made its teardown mutate the dict)
+### `1.0.1+mf.10` → `1.0.1+mf.11` (2026-10-16) — clean_links() walks a snapshot (our mf.6 made its teardown mutate the dict); rns pin STEPS BACK to `1.3.8+mf.5`
 
 Found on the MeshForge fleet while tracing an unrelated incident:
 `LXMRouter.clean_links: RuntimeError: dictionary changed size during
@@ -44,10 +44,27 @@ with the fleet's exact error (deterministic teardown→callback, the skipped
 propagation cleanup, a concurrent add, and a real two-thread race); all 9 fork
 tests pass with the fix.
 
-**Not tagged, not rolled.** HEAD pins `rns==1.3.8+mf.7` (mf.9/mf.10 are
-pin-only follows of the unrolled PipeInterface arc) while the fleet runs
-lxmf `mf.8` / rns `mf.5`, so a release from HEAD would roll two unrelated
-changes at once — the release shape is the operator's call.
+**Release shape (operator: "b′", 2026-10-16) — the rns pin steps BACK to
+`1.3.8+mf.5` on purpose.** mf.9/mf.10 were pin-only follows of the unrolled
+PipeInterface arc (rns mf.6/mf.7: +251 lines PipeInterface, +6 Reticulum.py,
++8 rnstatus, rolled to 0 boxes); `git diff 1.0.1+mf.8 <mf.10>` touches NO
+LXMF code (only `_version.py`, this file, `setup.py`). So mf.11 = mf.8's
+code + this fix, exact-pinned to the rns the whole fleet runs — one change
+per roll on the layer the domain depends on. A `+mf.8.1` hotfix was
+rejected: `scripts/rns_version_check.py` and
+`watchdog_probes_drift._fork_version_key` parse `+mf.(\d+)` with fullmatch
+and would read it as unparseable drift. **When rns mf.7 actually rolls, the
+next release (mf.12) re-follows it**; a lower rns pin than mf.10's is the
+intended state of mf.11, not an error.
+
+Non-author read (2026-10-16) PASS-with-notes: root cause confirmed in the
+installed rns (`Link.teardown()` → `link_closed()` → callback, same thread);
+red on the parent, both halves pinned by mutants (live iteration → 4 red;
+`pop` without default → 3 red). Queued, not in this release: the `in` →
+`[h]`/`pop(h)` TOCTOU pairs in `process_outbound` (a cross-thread popper since
+mf.6) — `.get()` / `pop(h, None)` would close them; and
+`delivery_link_closed`'s own list-comp can race the same way (caught and
+logged by `Link.link_closed`, so non-fatal).
 
 **Offer back:** the milder upstream form (concurrent registration) applies to
 `markqvist/LXMF` master as-is; interactions there are restricted to
