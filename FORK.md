@@ -18,6 +18,33 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.11` → `1.0.1+mf.12` (2026-10-16) — process_outbound reads each link table once; the closed callback scans a snapshot (mf.6's race, second half)
+
+Queued by the non-author read of mf.11 and fixed the same day. mf.6's
+`delivery_link_closed` pops a closed link from `direct_links` /
+`backchannel_links`, and RNS fires it synchronously from `Link.teardown()`,
+which runs on the link watchdog and on Transport's inbound thread. So it can
+land between `process_outbound`'s `h in table` and the `table[h]` /
+`table.pop(h)` that follows — three sites (DELIVERED backchannel prep, the
+DIRECT→backchannel lookup, the CLOSED cleanup), each a `KeyError` that drops
+the rest of that outbound pass. The callback itself scanned `table.items()`
+live, so a link registered by another thread mid-scan raised mf.11's
+`dictionary changed size during iteration`.
+
+Fix (20+/15−, no wire change): `.get()` / `pop(h, None)`; the callback scans
+`list(table.items())`. Behaviour is otherwise identical (RNS `Link` defines
+no `__eq__`/`__bool__`); a table entry stored as `None` (never written by
+LXMF) now falls through instead of `AttributeError`. Atomic under the GIL by
+measurement on CPython 3.13 (live scan 5981/6000 errors, snapshot 0/6000).
+Test: `tests/meshforge_outbound_toctou.py` — 5 of 5 fail on mf.11; all 14
+fork tests pass. Non-author read PASS-with-notes (its one test note fixed).
+Not observed on the fleet (no `KeyError` in these paths in any journal read):
+this closes a race by construction, it does not cure a measured symptom.
+
+Same release shape as mf.11: mf.11's code + this fix, still exact-pinned to
+`rns==1.3.8+mf.5`. **The re-follow of rns mf.7 promised in the mf.11 entry
+moves to the first release after rns mf.7 actually rolls (mf.13 or later).**
+
 ### `1.0.1+mf.10` → `1.0.1+mf.11` (2026-10-16) — clean_links() walks a snapshot (our mf.6 made its teardown mutate the dict); rns pin STEPS BACK to `1.3.8+mf.5`
 
 Found on the MeshForge fleet while tracing an unrelated incident:
