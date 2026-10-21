@@ -18,6 +18,20 @@ of [Reticulum](https://github.com/Nursedude/reticulum).
 
 ## Upstream merge history
 
+### `1.0.1+mf.12` → `1.0.1+mf.13` (2026-10-21) — follow rns `1.3.8+mf.11`
+
+Pin-only release, no LXMF code change (`LXMF/` identical to mf.12 except
+`_version.py`). rns `1.3.8+mf.11` = mf.5 + one patch: a shared instance's
+teardown (`Reticulum.exit_handler`) now releases `@rns/<instance>/rpc` (and
+the TCP control port), not only `@rns/<instance>` — a process alive after
+teardown no longer leaves the RPC name bound for the next host to die on
+with EADDRINUSE. Canary moc4 2026-10-20 13:22 → 10-21 (~17 h, both envs):
+rnsd NRestarts=0, 0 journal/logfile errors, then a SECOND ordered restart
+(the first mf.11 teardown) stopped in 113 ms with no SIGKILL and rnsd owned
+both names again; fork drills `meshforge_rpc_release{,_tcp}` Ran 1 / OK in
+both envs. Same reason as mf.8: lxmf's exact pin must name the substrate it
+rolls with, or `pip check` / a fresh resolve fails.
+
 ### `1.0.1+mf.11` → `1.0.1+mf.12` (2026-10-16) — process_outbound reads each link table once; the closed callback scans a snapshot (mf.6's race, second half)
 
 Queued by the non-author read of mf.11 and fixed the same day. mf.6's
